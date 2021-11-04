@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <algorithm>
 
-// function for printing logical size of a file
+// function for printing logical size of file
 void print_log_size(const char* filename)
 {
 	// opening the file in write only mode(actually we could choose
@@ -49,22 +49,30 @@ void print_phys_size(const char* filename)
                 exit(-1);
         }
         bool flag = false;
+	int offset = 0;
         while (1)
         {
 		// reaching the first datapoint from our current position
 		// thus counting the bytes of current hole
-                int hole = lseek(fd, 0, SEEK_DATA);
+                int hole = lseek(fd, offset, SEEK_DATA);
                 if (hole < 0)
                 {
+			if (errno == ENXIO)
+			{
+				printf("physical size of file %s is: ", filename);
+				printf("%d\n", overall_bytes);
+				return;
+			}
                         printf("failed to move offset\n");
                         exit(-1);
                 }
                 if (hole == 0 && flag)
                         break;
                 flag = true;
+		offset += hole;
 		// reaching the start of a hole thus counting the bytes of
 		// current data
-                int data = lseek(fd, 0, SEEK_HOLE);
+                int data = lseek(fd, offset, SEEK_HOLE);
                 if (data < 0)
                 {
                         printf("failed to move offset\n");
@@ -75,6 +83,7 @@ void print_phys_size(const char* filename)
                         break;
 		// adding newly counted bytes to the answer
                 overall_bytes += data;
+		offset += data;
         }
 	// printing the result
 	printf("physical size of file %s is: ", filename);
@@ -126,10 +135,18 @@ int main(int argc, const char** argv)
 		// buffer for transporting the data
 		char buff[buff_size];
 		// reaching the data thus counting the bytes of a hole
-		int hole1 = lseek(fd1, 0, SEEK_DATA);
+		int hole1 = lseek(fd1, curr_overall_bytes, SEEK_DATA);
 		// checking if we managed to move offset
 		if (hole1 < 0)
 		{
+			if (errno == ENXIO)
+			{
+				close(fd2);
+       				close(fd1);
+       				print_log_size(argv[2]);
+       				print_phys_size(argv[2]);
+				return 0;
+			}
 			printf("failed to move offset\n");
 			exit(-1);
 		}
@@ -148,7 +165,7 @@ int main(int argc, const char** argv)
 		flag = true;
 		// reaching the next hole thus counting the size of a data
 		// over wich we have just passed
-		int curr_data_bytes = lseek(fd1, 0, SEEK_HOLE);
+		int curr_data_bytes = lseek(fd1, curr_overall_bytes, SEEK_HOLE);
 		// checking if we managed to move
 		if (curr_data_bytes < 0)
 		{
